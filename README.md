@@ -1,0 +1,2 @@
+# openrouter-cli
+Openrouter CLI
