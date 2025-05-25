@@ -28,7 +28,7 @@ This CLI tool allows you to send prompts to various language models via OpenRout
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/openrouter-cli.git
+git clone https://github.com/blackopsinc/openrouter-cli.git
 
 # Navigate to the project directory
 cd openrouter-cli
