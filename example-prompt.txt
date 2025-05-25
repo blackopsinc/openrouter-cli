@@ -1,0 +1,1 @@
+write a cli program in go and print out only the source code
