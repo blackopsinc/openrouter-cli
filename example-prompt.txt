@@ -1,1 +1,1 @@
-write a cli program in go and print out only the source code
+build a linux firewall that reads the network connections from the kernel and gets stats from network connections 

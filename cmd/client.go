@@ -3,26 +3,45 @@ package cmd
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 const (
-	openRouterURL = "https://openrouter.ai/api/v1/chat/completions"
+	openRouterURL    = "https://openrouter.ai/api/v1/chat/completions"
+	defaultTimeout   = 60 * time.Second
+	maxFileSize      = 10 * 1024 * 1024 // 10MB
+	userAgent        = "OpenRouter-CLI/1.0"
 )
 
 // OpenRouterClient handles interactions with the OpenRouter API
 type OpenRouterClient struct {
-	apiKey string
+	apiKey     string
+	httpClient *http.Client
+	timeout    time.Duration
 }
 
 // NewOpenRouterClient creates a new OpenRouter API client
 func NewOpenRouterClient(apiKey string) *OpenRouterClient {
-	return &OpenRouterClient{apiKey: apiKey}
+	return &OpenRouterClient{
+		apiKey:  apiKey,
+		timeout: defaultTimeout,
+		httpClient: &http.Client{
+			Timeout: defaultTimeout,
+		},
+	}
+}
+
+// SetTimeout sets the request timeout
+func (c *OpenRouterClient) SetTimeout(timeout time.Duration) {
+	c.timeout = timeout
+	c.httpClient.Timeout = timeout
 }
 
 // ProcessInput processes input from various sources and sends it to OpenRouter
@@ -31,25 +50,25 @@ func (c *OpenRouterClient) ProcessInput(filePath string, directPrompt string, mo
 	var err error
 
 	// Priority for input sources
-	if filePath != "" {
+	switch {
+	case filePath != "":
 		// Prioritize file content - upload file as prompt
-		fileContent, err := readFromFile(filePath)
+		input, err = c.readFromFile(filePath)
 		if err != nil {
-			return "", fmt.Errorf("failed to read from file: %w", err)
+			return "", fmt.Errorf("failed to read from file '%s': %w", filePath, err)
 		}
-		input = fileContent
-	} else if directPrompt != "" {
+	case directPrompt != "":
 		// Use direct prompt if no file is provided
 		input = directPrompt
-	} else {
+	default:
 		// Fall back to stdin if neither file nor direct prompt is provided
-		input, err = readFromStdin()
+		input, err = c.readFromStdin()
 		if err != nil {
 			return "", fmt.Errorf("failed to read from stdin: %w", err)
 		}
 	}
 
-	// Trim input
+	// Validate and clean input
 	input = strings.TrimSpace(input)
 	if input == "" {
 		return "", fmt.Errorf("input is empty")
@@ -59,28 +78,41 @@ func (c *OpenRouterClient) ProcessInput(filePath string, directPrompt string, mo
 	return c.sendRequest(input, modelName)
 }
 
-// readFromFile reads text from a file
-func readFromFile(filePath string) (string, error) {
+// readFromFile reads text from a file with size validation
+func (c *OpenRouterClient) readFromFile(filePath string) (string, error) {
+	// Check file size first
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return "", fmt.Errorf("cannot access file: %w", err)
+	}
+
+	if fileInfo.Size() > maxFileSize {
+		return "", fmt.Errorf("file size (%d bytes) exceeds maximum allowed size (%d bytes)", 
+			fileInfo.Size(), maxFileSize)
+	}
+
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("cannot read file: %w", err)
 	}
+
 	return string(content), nil
 }
 
-// readFromStdin reads text from standard input
-func readFromStdin() (string, error) {
-	fmt.Println("Enter your message (press Ctrl+D on Unix/Linux or Ctrl+Z followed by Enter on Windows when done):")
+// readFromStdin reads text from standard input with improved handling
+func (c *OpenRouterClient) readFromStdin() (string, error) {
+	fmt.Fprintln(os.Stderr, "Enter your message (press Ctrl+D on Unix/Linux or Ctrl+Z followed by Enter on Windows when done):")
 	
 	scanner := bufio.NewScanner(os.Stdin)
 	var inputBuilder strings.Builder
 	
 	for scanner.Scan() {
-		inputBuilder.WriteString(scanner.Text() + "\n")
+		inputBuilder.WriteString(scanner.Text())
+		inputBuilder.WriteString("\n")
 	}
 	
 	if err := scanner.Err(); err != nil {
-		return "", err
+		return "", fmt.Errorf("error reading from stdin: %w", err)
 	}
 	
 	return inputBuilder.String(), nil
@@ -88,8 +120,10 @@ func readFromStdin() (string, error) {
 
 // OpenRouterRequest represents the request body for the OpenRouter API
 type OpenRouterRequest struct {
-	Model    string        `json:"model"`
-	Messages []ChatMessage `json:"messages"`
+	Model       string        `json:"model"`
+	Messages    []ChatMessage `json:"messages"`
+	Temperature *float64      `json:"temperature,omitempty"`
+	MaxTokens   *int          `json:"max_tokens,omitempty"`
 }
 
 // ChatMessage represents a message in a chat conversation
@@ -100,17 +134,31 @@ type ChatMessage struct {
 
 // OpenRouterResponse represents the response from the OpenRouter API
 type OpenRouterResponse struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	Model   string `json:"model"`
 	Choices []struct {
+		Index   int `json:"index"`
 		Message struct {
+			Role    string `json:"role"`
 			Content string `json:"content"`
 		} `json:"message"`
+		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
+	Usage *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage,omitempty"`
 	Error *struct {
 		Message string `json:"message"`
+		Type    string `json:"type"`
+		Code    string `json:"code"`
 	} `json:"error,omitempty"`
 }
 
-// sendRequest sends a request to the OpenRouter API
+// sendRequest sends a request to the OpenRouter API with improved error handling
 func (c *OpenRouterClient) sendRequest(input string, modelName string) (string, error) {
 	// Create request body
 	reqBody := OpenRouterRequest{
@@ -128,8 +176,12 @@ func (c *OpenRouterClient) sendRequest(input string, modelName string) (string, 
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 	
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+	
 	// Create HTTP request
-	req, err := http.NewRequest("POST", openRouterURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", openRouterURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
@@ -137,13 +189,16 @@ func (c *OpenRouterClient) sendRequest(input string, modelName string) (string, 
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("HTTP-Referer", "https://github.com/openrouter-cli")
 	req.Header.Set("X-Title", "OpenRouter CLI")
 	
 	// Send request
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("request timed out after %v", c.timeout)
+		}
 		return "", fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -154,15 +209,21 @@ func (c *OpenRouterClient) sendRequest(input string, modelName string) (string, 
 		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 	
+	// Handle HTTP errors
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	
 	// Parse response
 	var openRouterResp OpenRouterResponse
 	if err := json.Unmarshal(body, &openRouterResp); err != nil {
 		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 	
-	// Check for errors
-	if openRouterResp.Error != nil && openRouterResp.Error.Message != "" {
-		return "", fmt.Errorf("API error: %s", openRouterResp.Error.Message)
+	// Check for API errors
+	if openRouterResp.Error != nil {
+		return "", fmt.Errorf("API error (%s): %s", 
+			openRouterResp.Error.Type, openRouterResp.Error.Message)
 	}
 	
 	// Check if we have any choices
