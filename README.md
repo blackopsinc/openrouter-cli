@@ -1,20 +1,16 @@
 # OpenRouter CLI
 
-A powerful command-line interface for sending prompts to OpenRouter's API with advanced features and configuration management.
+A simple command-line interface for sending prompts to OpenRouter's API via stdin. Perfect for piping data from other commands.
 
 ## Overview
 
-This CLI tool allows you to send prompts to various language models via OpenRouter's API. It supports multiple input methods, model aliases, configuration management, and flexible API key handling.
+This CLI tool reads input from stdin and sends it to OpenRouter's API. It's designed to work seamlessly with Unix pipes, making it easy to process command output through AI models.
 
 ## Features
 
-- 🚀 **Multiple Input Methods**: Direct prompts, file content, or interactive stdin
+- 🚀 **Piped Input**: Read from stdin for seamless integration with other commands
 - 🎯 **Model Aliases**: Use short aliases instead of full model names
-- ⚙️ **Configuration Management**: Save and load settings from config file
-- ⏱️ **Timeout Control**: Configurable request timeouts
-- 📝 **Verbose Logging**: Optional detailed output for debugging
-- 🔒 **Secure API Key Handling**: Environment variables or command-line flags
-- 📏 **File Size Validation**: Prevents uploading oversized files
+- 🔒 **Environment-Based Configuration**: All settings via environment variables
 - 🛡️ **Robust Error Handling**: Clear error messages and proper HTTP handling
 
 ## Installation
@@ -27,67 +23,87 @@ This CLI tool allows you to send prompts to various language models via OpenRout
 ### Building from Source
 
 ```bash
-# Clone the repository
-git clone https://github.com/blackopsinc/openrouter-cli.git
-
 # Navigate to the project directory
 cd openrouter-cli
 
 # Build the project
-go build
+go build -o openrouter-cli
 ```
 
 ## Usage
 
 ### Basic Usage
 
-```bash
-# Using with an API key and prompt directly as an argument
-./openrouter-cli -key "your-api-key-here" "What is the capital of France?"
-
-# Using with an API key and prompt from stdin (when no arguments are provided)
-./openrouter-cli -key "your-api-key-here"
-
-# Using with an API key and prompt from a file
-./openrouter-cli -key "your-api-key-here" -file "/path/to/file.txt"
-
-# Using model aliases for convenience
-./openrouter-cli -key "your-api-key-here" -model gpt-4 "Explain quantum computing"
-```
-
-### Advanced Usage
+The tool reads from stdin and requires the API key to be set via environment variable:
 
 ```bash
-# Enable verbose output
-./openrouter-cli -v -key "your-api-key" "What is Go programming?"
+# Set your API key
+export OPENROUTER_API_KEY="your-api-key-here"
 
-# Set custom timeout
-./openrouter-cli -timeout 30s -key "your-api-key" "Complex question here"
+# Pipe command output to OpenRouter
+ps aux | ./openrouter-cli
 
-# List available model aliases
-./openrouter-cli --list-models
+# Pipe file content
+cat file.txt | ./openrouter-cli
 
-# Save current configuration
-./openrouter-cli --save-config
+# Pipe command output with a pre-prompt
+echo "Hello world" | ./openrouter-cli
 ```
 
-## Available Flags
+### Environment Variables
 
-- `-key`: Your OpenRouter API key (can also be provided via environment variable)
-- `-file`: Path to a file whose content will be used as the prompt
-- `-model`: Model to use for the request (supports aliases, default: claude-thinking)
-- `-verbose`, `-v`: Enable verbose output for debugging
-- `-timeout`: Request timeout duration (default: 60s)
-- `--list-models`: List all available model aliases
-- `--save-config`: Save current configuration to file
+The tool uses the following environment variables:
 
-## Environment Variables
+- **`OPENROUTER_API_KEY`** (required): Your OpenRouter API key
+- **`OPENROUTER_MODEL`** (optional): Model to use (default: `anthropic/claude-3.7-sonnet:thinking`)
+- **`OPENROUTER_PRE_PROMPT`** (optional): Text to prepend to the stdin input
 
-- `OPENROUTER_API_KEY`: You can set this environment variable instead of using the `-key` flag
+### Examples
+
+#### Basic Piping
+
+```bash
+# Analyze process list
+ps aux | ./openrouter-cli
+
+# Analyze log file
+tail -n 100 app.log | ./openrouter-cli
+
+# Analyze command output
+df -h | ./openrouter-cli
+```
+
+#### With Model Selection
+
+```bash
+export OPENROUTER_API_KEY="your-api-key"
+export OPENROUTER_MODEL="gpt-4"
+
+ps aux | ./openrouter-cli
+```
+
+#### With Pre-Prompt
+
+```bash
+export OPENROUTER_API_KEY="your-api-key"
+export OPENROUTER_PRE_PROMPT="Analyze the following process list and identify any suspicious processes:"
+
+ps aux | ./openrouter-cli
+```
+
+#### Combined Configuration
+
+```bash
+export OPENROUTER_API_KEY="your-api-key"
+export OPENROUTER_MODEL="claude-3-opus"
+export OPENROUTER_PRE_PROMPT="Summarize the following:"
+
+cat document.txt | ./openrouter-cli
+```
 
 ## Model Aliases
 
-The CLI includes convenient aliases for popular models:
+The CLI supports convenient aliases for popular models:
 
 | Alias | Full Model Name |
 |-------|----------------|
@@ -99,84 +115,26 @@ The CLI includes convenient aliases for popular models:
 | `gpt-3.5-turbo` | `openai/gpt-3.5-turbo` |
 | `claude-thinking` | `anthropic/claude-3.7-sonnet:thinking` |
 
+You can use either the alias or the full model name in `OPENROUTER_MODEL`.
+
 ## Configuration
 
-The CLI automatically creates a configuration file at `~/.config/openrouter-cli/config.json` with default settings. You can customize:
-
-- Default model
-- Request timeout
-- Maximum file size
-- Model aliases
-
-Example configuration:
-```json
-{
-  "default_model": "anthropic/claude-3.7-sonnet:thinking",
-  "timeout_seconds": 60,
-  "max_file_size_bytes": 10485760,
-  "models": {
-    "gpt-4": "openai/gpt-4",
-    "claude-3-opus": "anthropic/claude-3-opus"
-  }
-}
-```
-
-## Input Priorities
-
-The CLI prioritizes input sources as follows:
-
-1. If a file is provided with `-file`, it will use the file content as the prompt
-2. If no file is provided but a direct prompt is given, it will use the direct prompt
-3. If neither a file nor direct prompt is provided, it will read from standard input (stdin)
-
-## Examples
-
-### Basic Examples
-
-```bash
-# Using a direct prompt
-./openrouter-cli -key "your-api-key-here" "Explain quantum computing in simple terms"
-
-# Using a file as the prompt source
-./openrouter-cli -key "your-api-key-here" -file "code.go"
-
-# Using stdin (interactive mode)
-./openrouter-cli -key "your-api-key-here"
-# Then type your prompt and press Ctrl+D (Unix/Linux) or Ctrl+Z followed by Enter (Windows) when done
-```
-
-### Advanced Examples
-
-```bash
-# Using environment variable for API key with model alias
-export OPENROUTER_API_KEY="your-api-key-here"
-./openrouter-cli -model gpt-4 "Explain the differences between Go and Python"
-
-# Verbose mode with custom timeout
-./openrouter-cli -v -timeout 2m -model claude-3-opus "Write a detailed analysis of..."
-
-# List available models
-./openrouter-cli --list-models
-
-# Process a large file with verbose output
-./openrouter-cli -v -file large_document.txt -model gpt-4-turbo
-```
+The CLI uses a configuration file at `~/.config/openrouter-cli/config.json` for default model settings. If the file doesn't exist, it uses built-in defaults. The configuration file is optional and only affects the default model when `OPENROUTER_MODEL` is not set.
 
 ## Error Handling
 
-The CLI provides detailed error messages for common issues:
+The CLI provides clear error messages for common issues:
 
-- Invalid API keys
-- Network timeouts
-- File size limits exceeded
-- Unsupported file formats
-- API rate limits
+- Missing API key
+- Empty input
+- Network errors
+- API errors
 
 ## Security
 
+- API keys are only read from environment variables (never from command-line arguments)
 - API keys are never logged or stored in configuration files
 - Use environment variables for API keys in production environments
-- File size limits prevent accidental upload of large files
 
 ## Contributing
 
@@ -191,4 +149,3 @@ MIT License - see LICENSE file for details.
 For issues and questions:
 - Check the [OpenRouter documentation](https://openrouter.ai/docs)
 - Open an issue on GitHub
-- Review the verbose output with `-v` flag for debugging

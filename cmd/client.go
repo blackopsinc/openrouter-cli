@@ -99,10 +99,8 @@ func (c *OpenRouterClient) readFromFile(filePath string) (string, error) {
 	return string(content), nil
 }
 
-// readFromStdin reads text from standard input with improved handling
+// readFromStdin reads text from standard input (for piped data)
 func (c *OpenRouterClient) readFromStdin() (string, error) {
-	fmt.Fprintln(os.Stderr, "Enter your message (press Ctrl+D on Unix/Linux or Ctrl+Z followed by Enter on Windows when done):")
-	
 	scanner := bufio.NewScanner(os.Stdin)
 	var inputBuilder strings.Builder
 	

@@ -1,1 +1,0 @@
-build a linux firewall that reads the network connections from the kernel and gets stats from network connections 
