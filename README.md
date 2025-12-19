@@ -9,7 +9,6 @@ This CLI tool reads input from stdin and sends it to OpenRouter's API. It's desi
 ## Features
 
 - 🚀 **Piped Input**: Read from stdin for seamless integration with other commands
-- 🎯 **Model Aliases**: Use short aliases instead of full model names
 - 🔒 **Environment-Based Configuration**: All settings via environment variables
 - 🛡️ **Robust Error Handling**: Clear error messages and proper HTTP handling
 
@@ -55,7 +54,7 @@ echo "Hello world" | ./openrouter-cli
 The tool uses the following environment variables:
 
 - **`OPENROUTER_API_KEY`** (required): Your OpenRouter API key
-- **`OPENROUTER_MODEL`** (optional): Model to use (default: `anthropic/claude-3.7-sonnet:thinking`)
+- **`OPENROUTER_MODEL`** (optional): Model to use (default: `openai/gpt-oss-20b:free`)
 - **`OPENROUTER_PRE_PROMPT`** (optional): Text to prepend to the stdin input
 
 ### Examples
@@ -77,7 +76,7 @@ df -h | ./openrouter-cli
 
 ```bash
 export OPENROUTER_API_KEY="your-api-key"
-export OPENROUTER_MODEL="gpt-4"
+export OPENROUTER_MODEL="openai/gpt-4"
 
 ps aux | ./openrouter-cli
 ```
@@ -95,31 +94,11 @@ ps aux | ./openrouter-cli
 
 ```bash
 export OPENROUTER_API_KEY="your-api-key"
-export OPENROUTER_MODEL="claude-3-opus"
+export OPENROUTER_MODEL="anthropic/claude-3-opus"
 export OPENROUTER_PRE_PROMPT="Summarize the following:"
 
 cat document.txt | ./openrouter-cli
 ```
-
-## Model Aliases
-
-The CLI supports convenient aliases for popular models:
-
-| Alias | Full Model Name |
-|-------|----------------|
-| `claude-3-opus` | `anthropic/claude-3-opus` |
-| `claude-3-sonnet` | `anthropic/claude-3-sonnet` |
-| `claude-3-haiku` | `anthropic/claude-3-haiku` |
-| `gpt-4` | `openai/gpt-4` |
-| `gpt-4-turbo` | `openai/gpt-4-turbo` |
-| `gpt-3.5-turbo` | `openai/gpt-3.5-turbo` |
-| `claude-thinking` | `anthropic/claude-3.7-sonnet:thinking` |
-
-You can use either the alias or the full model name in `OPENROUTER_MODEL`.
-
-## Configuration
-
-The CLI uses a configuration file at `~/.config/openrouter-cli/config.json` for default model settings. If the file doesn't exist, it uses built-in defaults. The configuration file is optional and only affects the default model when `OPENROUTER_MODEL` is not set.
 
 ## Error Handling
 
@@ -133,7 +112,7 @@ The CLI provides clear error messages for common issues:
 ## Security
 
 - API keys are only read from environment variables (never from command-line arguments)
-- API keys are never logged or stored in configuration files
+- API keys are never logged or stored
 - Use environment variables for API keys in production environments
 
 ## Contributing
