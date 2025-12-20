@@ -212,9 +212,9 @@ The tool uses the following environment variables:
   - OpenRouter default: `openai/gpt-oss-20b:free`
   - Ollama default: `llama2`
   - LM Studio default: `local-model`
-- **`OPENROUTER_PRE_PROMPT`** (optional): Text to prepend to the stdin input    
-- **`OPENROUTER_STREAM`** (optional): Enable streaming responses. Set to `1`, `true`, `yes`, or `on` to enable
-- **`OPENROUTER_VERBOSE`** (optional): Enable verbose/debug logging. Set to `1`, `true`, `yes`, or `on` to enable
+- **`LLM_PRE_PROMPT`** (optional): Text to prepend to the stdin input    
+- **`LLM_STREAM`** (optional): Enable streaming responses. Set to `1`, `true`, `yes`, or `on` to enable
+- **`LLM_VERBOSE`** (optional): Enable verbose/debug logging. Set to `1`, `true`, `yes`, or `on` to enable
 - **`OLLAMA_URL`** (optional): Ollama API URL (default: `http://localhost:11434/api/chat`)
 - **`LM_STUDIO_URL`** (optional): LM Studio API URL (default: `http://localhost:1234/v1/chat/completions`)
 
@@ -284,7 +284,7 @@ ps aux | ./openrouter-cli
 # Works with any provider
 export LLM_PROVIDER="ollama"  # or "openrouter" or "lmstudio"
 export OPENROUTER_API_KEY="your-api-key"  # only needed for openrouter
-export OPENROUTER_PRE_PROMPT="Analyze the following process list and identify any suspicious processes:"
+export LLM_PRE_PROMPT="Analyze the following process list and identify any suspicious processes:"
 
 ps aux | ./openrouter-cli
 ```
@@ -294,7 +294,7 @@ ps aux | ./openrouter-cli
 ```bash
 export LLM_PROVIDER="ollama"  # or "openrouter" or "lmstudio"
 export OPENROUTER_API_KEY="your-api-key"  # only needed for openrouter
-export OPENROUTER_STREAM="true"
+export LLM_STREAM="true"
 
 echo "Write a short story about a robot" | ./openrouter-cli
 ```
@@ -306,7 +306,7 @@ Streaming mode outputs responses in real-time as they're generated, providing a 
 ```bash
 export LLM_PROVIDER="ollama"  # or "openrouter" or "lmstudio"
 export OPENROUTER_API_KEY="your-api-key"  # only needed for openrouter
-export OPENROUTER_VERBOSE="true"
+export LLM_VERBOSE="true"
 
 echo "Hello world" | ./openrouter-cli
 ```
@@ -325,17 +325,17 @@ Verbose mode provides detailed logging including:
 export LLM_PROVIDER="openrouter"
 export OPENROUTER_API_KEY="your-api-key"
 export LLM_MODEL="anthropic/claude-3-opus"
-export OPENROUTER_PRE_PROMPT="Summarize the following:"
-export OPENROUTER_STREAM="true"
-export OPENROUTER_VERBOSE="true"
+export LLM_PRE_PROMPT="Summarize the following:"
+export LLM_STREAM="true"
+export LLM_VERBOSE="true"
 cat document.txt | ./openrouter-cli
 
 # Ollama example
 export LLM_PROVIDER="ollama"
 export LLM_MODEL="llama3.2"
-export OPENROUTER_PRE_PROMPT="Summarize the following:"
-export OPENROUTER_STREAM="true"
-export OPENROUTER_VERBOSE="true"
+export LLM_PRE_PROMPT="Summarize the following:"
+export LLM_STREAM="true"
+export LLM_VERBOSE="true"
 cat document.txt | ./openrouter-cli
 ```
 

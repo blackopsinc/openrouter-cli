@@ -18,9 +18,9 @@ const (
 	envAPIKey    = "OPENROUTER_API_KEY"
 	envProvider  = "LLM_PROVIDER"
 	envModel     = "LLM_MODEL"
-	envPrePrompt = "OPENROUTER_PRE_PROMPT"
-	envStream    = "OPENROUTER_STREAM"
-	envVerbose   = "OPENROUTER_VERBOSE"
+	envPrePrompt = "LLM_PRE_PROMPT"
+	envStream    = "LLM_STREAM"
+	envVerbose   = "LLM_VERBOSE"
 	envOllamaURL = "OLLAMA_URL"
 	envLMStudioURL = "LM_STUDIO_URL"
 
