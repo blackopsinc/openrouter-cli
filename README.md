@@ -215,6 +215,7 @@ The tool uses the following environment variables:
 - **`LLM_PRE_PROMPT`** (optional): Text to prepend to the stdin input    
 - **`LLM_STREAM`** (optional): Enable streaming responses. Set to `1`, `true`, `yes`, or `on` to enable
 - **`LLM_VERBOSE`** (optional): Enable verbose/debug logging. Set to `1`, `true`, `yes`, or `on` to enable
+- **`LLM_TIMEOUT`** (optional): Request timeout in seconds (default: 60 for non-streaming, 300 for streaming). Useful for slow local LLMs like LM Studio
 - **`OLLAMA_URL`** (optional): Ollama API URL (default: `http://localhost:11434/api/chat`)
 - **`LM_STUDIO_URL`** (optional): LM Studio API URL (default: `http://localhost:1234/v1/chat/completions`)
 
@@ -362,6 +363,10 @@ cat document.txt | ./openrouter-cli
 - Uses OpenAI-compatible API format
 - Streaming uses Server-Sent Events (SSE)
 - Default URL: `http://localhost:1234/v1/chat/completions`
+- **Note:** LM Studio can be slow, especially with large models. If you get timeout errors, increase the timeout:
+  ```bash
+  export LLM_TIMEOUT=600  # 10 minutes
+  ```
 
 ## Error Handling
 
@@ -372,6 +377,10 @@ The CLI provides clear error messages for common issues:
 - Empty input
 - Network errors (connection refused for local providers usually means the service isn't running)
 - API errors
+- **Timeout errors:** If you see "context deadline exceeded" or "request timed out", especially with LM Studio or large models, increase the timeout:
+  ```bash
+  export LLM_TIMEOUT=600  # Set to 600 seconds (10 minutes) or higher
+  ```
 
 ## Security
 

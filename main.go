@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -21,12 +22,14 @@ const (
 	envPrePrompt = "LLM_PRE_PROMPT"
 	envStream    = "LLM_STREAM"
 	envVerbose   = "LLM_VERBOSE"
+	envTimeout   = "LLM_TIMEOUT"
 	envOllamaURL = "OLLAMA_URL"
 	envLMStudioURL = "LM_STUDIO_URL"
 
-	defaultTimeout = 60 * time.Second
-	defaultModel  = "openai/gpt-oss-20b:free"
-	userAgent      = "OpenRouter-CLI/1.0"
+	defaultTimeout      = 60 * time.Second
+	defaultStreamTimeout = 300 * time.Second // 5 minutes for streaming
+	defaultModel        = "openai/gpt-oss-20b:free"
+	userAgent           = "OpenRouter-CLI/1.0"
 
 	// Provider URLs
 	openRouterURL  = "https://openrouter.ai/api/v1/chat/completions"
@@ -153,11 +156,18 @@ func main() {
 		log.Printf("[DEBUG] Input length: %d characters", len(input))
 	}
 
+	// Get timeout based on whether streaming is enabled
+	timeout := getTimeout(stream)
+
+	if verbose {
+		log.Printf("[DEBUG] Timeout: %v", timeout)
+	}
+
 	// Send request based on provider
 	if stream {
-		err = sendStreamingRequest(provider, apiKey, input, model, ollamaURL, lmStudioURL, verbose)
+		err = sendStreamingRequest(provider, apiKey, input, model, ollamaURL, lmStudioURL, timeout, verbose)
 	} else {
-		response, err := sendRequest(provider, apiKey, input, model, ollamaURL, lmStudioURL, verbose)
+		response, err := sendRequest(provider, apiKey, input, model, ollamaURL, lmStudioURL, timeout, verbose)
 		if err != nil {
 			log.Fatalf("Request failed: %v", err)
 		}
@@ -173,6 +183,37 @@ func main() {
 func isEnvSet(key string) bool {
 	val := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
 	return val == "1" || val == "true" || val == "yes" || val == "on"
+}
+
+// getTimeout parses the timeout from environment variable or returns default
+func getTimeout(streaming bool) time.Duration {
+	timeoutStr := strings.TrimSpace(os.Getenv(envTimeout))
+	if timeoutStr == "" {
+		if streaming {
+			return defaultStreamTimeout
+		}
+		return defaultTimeout
+	}
+
+	// Parse as seconds (integer)
+	seconds, err := strconv.Atoi(timeoutStr)
+	if err != nil {
+		log.Printf("Warning: Invalid timeout value '%s', using default", timeoutStr)
+		if streaming {
+			return defaultStreamTimeout
+		}
+		return defaultTimeout
+	}
+
+	if seconds <= 0 {
+		log.Printf("Warning: Timeout must be positive, using default")
+		if streaming {
+			return defaultStreamTimeout
+		}
+		return defaultTimeout
+	}
+
+	return time.Duration(seconds) * time.Second
 }
 
 // prepareInput reads from stdin and optionally prepends a pre-prompt
@@ -215,7 +256,7 @@ func getAPIURL(provider Provider, ollamaURL, lmStudioURL string) string {
 }
 
 // sendRequest sends a request to the LLM API (non-streaming)
-func sendRequest(provider Provider, apiKey, input, modelName, ollamaURL, lmStudioURL string, verbose bool) (string, error) {
+func sendRequest(provider Provider, apiKey, input, modelName, ollamaURL, lmStudioURL string, timeout time.Duration, verbose bool) (string, error) {
 	apiURL := getAPIURL(provider, ollamaURL, lmStudioURL)
 
 	// Ollama uses a slightly different request format
@@ -282,7 +323,7 @@ func sendRequest(provider Provider, apiKey, input, modelName, ollamaURL, lmStudi
 	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return "", fmt.Errorf("request timed out after %v", defaultTimeout)
+			return "", fmt.Errorf("request timed out after %v", timeout)
 		}
 		return "", fmt.Errorf("failed to send request: %w", err)
 	}
@@ -368,7 +409,7 @@ func sendRequest(provider Provider, apiKey, input, modelName, ollamaURL, lmStudi
 }
 
 // sendStreamingRequest sends a streaming request to the LLM API (SSE)
-func sendStreamingRequest(provider Provider, apiKey, input, modelName, ollamaURL, lmStudioURL string, verbose bool) error {
+func sendStreamingRequest(provider Provider, apiKey, input, modelName, ollamaURL, lmStudioURL string, timeout time.Duration, verbose bool) error {
 	apiURL := getAPIURL(provider, ollamaURL, lmStudioURL)
 
 	// Ollama uses a slightly different request format
@@ -408,7 +449,7 @@ func sendStreamingRequest(provider Provider, apiKey, input, modelName, ollamaURL
 		log.Printf("[DEBUG] Request model: %s", modelName)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
@@ -430,12 +471,14 @@ func sendStreamingRequest(provider Provider, apiKey, input, modelName, ollamaURL
 		log.Printf("[DEBUG] Sending streaming HTTP POST request...")
 	}
 
-	client := &http.Client{Timeout: defaultTimeout}
+	// Use a longer timeout for the HTTP client to allow for slow streaming
+	// The context timeout will handle the overall request timeout
+	client := &http.Client{Timeout: timeout}
 
 	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("request timed out after %v", defaultTimeout)
+			return fmt.Errorf("request timed out after %v", timeout)
 		}
 		return fmt.Errorf("failed to send request: %w", err)
 	}
