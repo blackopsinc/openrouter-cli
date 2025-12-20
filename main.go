@@ -16,15 +16,31 @@ import (
 
 const (
 	envAPIKey    = "OPENROUTER_API_KEY"
+	envProvider  = "LLM_PROVIDER"
 	envModel     = "OPENROUTER_MODEL"
 	envPrePrompt = "OPENROUTER_PRE_PROMPT"
 	envStream    = "OPENROUTER_STREAM"
 	envVerbose   = "OPENROUTER_VERBOSE"
+	envOllamaURL = "OLLAMA_URL"
+	envLMStudioURL = "LM_STUDIO_URL"
 
-	openRouterURL  = "https://openrouter.ai/api/v1/chat/completions"
 	defaultTimeout = 60 * time.Second
 	defaultModel  = "openai/gpt-oss-20b:free"
 	userAgent      = "OpenRouter-CLI/1.0"
+
+	// Provider URLs
+	openRouterURL  = "https://openrouter.ai/api/v1/chat/completions"
+	defaultOllamaURL = "http://localhost:11434/api/chat"
+	defaultLMStudioURL = "http://localhost:1234/v1/chat/completions"
+)
+
+// Provider represents the LLM provider type
+type Provider string
+
+const (
+	ProviderOpenRouter Provider = "openrouter"
+	ProviderOllama     Provider = "ollama"
+	ProviderLMStudio   Provider = "lmstudio"
 )
 
 // OpenRouterRequest represents the request body for the OpenRouter API
@@ -57,17 +73,55 @@ type OpenRouterResponse struct {
 	} `json:"error,omitempty"`
 }
 
+// OllamaResponse represents the response from Ollama's native API
+type OllamaResponse struct {
+	Message struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	} `json:"message"`
+	Done   bool `json:"done"`
+	Error  string `json:"error,omitempty"`
+}
+
 func main() {
-	// Get API key from environment (required)
+	// Get provider from environment or default to openrouter
+	providerStr := strings.ToLower(strings.TrimSpace(os.Getenv(envProvider)))
+	if providerStr == "" {
+		providerStr = string(ProviderOpenRouter)
+	}
+
+	provider := Provider(providerStr)
+	if provider != ProviderOpenRouter && provider != ProviderOllama && provider != ProviderLMStudio {
+		log.Fatalf("Invalid provider: %s. Must be one of: openrouter, ollama, lmstudio", providerStr)
+	}
+
+	// Get API key from environment (required for OpenRouter, optional for others)
 	apiKey := strings.TrimSpace(os.Getenv(envAPIKey))
-	if apiKey == "" {
-		log.Fatalf("API key is required. Set %s environment variable", envAPIKey)
+	if provider == ProviderOpenRouter && apiKey == "" {
+		log.Fatalf("API key is required for OpenRouter. Set %s environment variable", envAPIKey)
 	}
 
 	// Get model from environment or use default
 	model := strings.TrimSpace(os.Getenv(envModel))
 	if model == "" {
-		model = defaultModel
+		if provider == ProviderOllama {
+			model = "llama2" // Default Ollama model
+		} else if provider == ProviderLMStudio {
+			model = "local-model" // Default LM Studio model
+		} else {
+			model = defaultModel
+		}
+	}
+
+	// Get provider-specific URLs
+	ollamaURL := strings.TrimSpace(os.Getenv(envOllamaURL))
+	if ollamaURL == "" {
+		ollamaURL = defaultOllamaURL
+	}
+
+	lmStudioURL := strings.TrimSpace(os.Getenv(envLMStudioURL))
+	if lmStudioURL == "" {
+		lmStudioURL = defaultLMStudioURL
 	}
 
 	// Check if streaming is enabled
@@ -77,9 +131,16 @@ func main() {
 	verbose := isEnvSet(envVerbose)
 
 	if verbose {
-		log.Printf("[DEBUG] Starting OpenRouter CLI")
+		log.Printf("[DEBUG] Starting LLM CLI")
+		log.Printf("[DEBUG] Provider: %s", provider)
 		log.Printf("[DEBUG] Model: %s", model)
 		log.Printf("[DEBUG] Streaming: %v", stream)
+		if provider == ProviderOllama {
+			log.Printf("[DEBUG] Ollama URL: %s", ollamaURL)
+		}
+		if provider == ProviderLMStudio {
+			log.Printf("[DEBUG] LM Studio URL: %s", lmStudioURL)
+		}
 	}
 
 	// Read and prepare input from stdin
@@ -92,11 +153,11 @@ func main() {
 		log.Printf("[DEBUG] Input length: %d characters", len(input))
 	}
 
-	// Send request to OpenRouter
+	// Send request based on provider
 	if stream {
-		err = sendStreamingRequest(apiKey, input, model, verbose)
+		err = sendStreamingRequest(provider, apiKey, input, model, ollamaURL, lmStudioURL, verbose)
 	} else {
-		response, err := sendRequest(apiKey, input, model, verbose)
+		response, err := sendRequest(provider, apiKey, input, model, ollamaURL, lmStudioURL, verbose)
 		if err != nil {
 			log.Fatalf("Request failed: %v", err)
 		}
@@ -141,17 +202,46 @@ func prepareInput(verbose bool) (string, error) {
 	return input, nil
 }
 
-// sendRequest sends a request to the OpenRouter API (non-streaming)
-func sendRequest(apiKey, input, modelName string, verbose bool) (string, error) {
-	reqBody := OpenRouterRequest{
-		Model: modelName,
-		Messages: []ChatMessage{
-			{
-				Role:    "user",
-				Content: input,
+// getAPIURL returns the appropriate API URL based on provider
+func getAPIURL(provider Provider, ollamaURL, lmStudioURL string) string {
+	switch provider {
+	case ProviderOllama:
+		return ollamaURL
+	case ProviderLMStudio:
+		return lmStudioURL
+	default:
+		return openRouterURL
+	}
+}
+
+// sendRequest sends a request to the LLM API (non-streaming)
+func sendRequest(provider Provider, apiKey, input, modelName, ollamaURL, lmStudioURL string, verbose bool) (string, error) {
+	apiURL := getAPIURL(provider, ollamaURL, lmStudioURL)
+
+	// Ollama uses a slightly different request format
+	var reqBody interface{}
+	if provider == ProviderOllama {
+		reqBody = map[string]interface{}{
+			"model": modelName,
+			"messages": []ChatMessage{
+				{
+					Role:    "user",
+					Content: input,
+				},
 			},
-		},
-		Stream: false,
+			"stream": false,
+		}
+	} else {
+		reqBody = OpenRouterRequest{
+			Model: modelName,
+			Messages: []ChatMessage{
+				{
+					Role:    "user",
+					Content: input,
+				},
+			},
+			Stream: false,
+		}
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -160,7 +250,7 @@ func sendRequest(apiKey, input, modelName string, verbose bool) (string, error) 
 	}
 
 	if verbose {
-		log.Printf("[DEBUG] Request URL: %s", openRouterURL)
+		log.Printf("[DEBUG] Request URL: %s", apiURL)
 		log.Printf("[DEBUG] Request body size: %d bytes", len(jsonData))
 		log.Printf("[DEBUG] Request model: %s", modelName)
 	}
@@ -168,16 +258,20 @@ func sendRequest(apiKey, input, modelName string, verbose bool) (string, error) 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", openRouterURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Referer", "https://github.com/blackopsinc/openrouter-cli")
-	req.Header.Set("X-Title", "OpenRouter CLI")
+
+	// Only set Authorization header for OpenRouter
+	if provider == ProviderOpenRouter && apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("Referer", "https://github.com/blackopsinc/openrouter-cli")
+		req.Header.Set("X-Title", "OpenRouter CLI")
+	}
 
 	if verbose {
 		log.Printf("[DEBUG] Sending HTTP POST request...")
@@ -210,14 +304,44 @@ func sendRequest(apiKey, input, modelName string, verbose bool) (string, error) 
 
 	// Try to parse error response for non-200 status codes
 	if resp.StatusCode != http.StatusOK {
-		var openRouterResp OpenRouterResponse
-		if err := json.Unmarshal(body, &openRouterResp); err == nil && openRouterResp.Error != nil {
-			return "", fmt.Errorf("HTTP %d - API error (%s): %s",
-				resp.StatusCode, openRouterResp.Error.Type, openRouterResp.Error.Message)
+		if provider == ProviderOllama {
+			var ollamaResp OllamaResponse
+			if err := json.Unmarshal(body, &ollamaResp); err == nil && ollamaResp.Error != "" {
+				return "", fmt.Errorf("HTTP %d - Ollama error: %s", resp.StatusCode, ollamaResp.Error)
+			}
+		} else {
+			var openRouterResp OpenRouterResponse
+			if err := json.Unmarshal(body, &openRouterResp); err == nil && openRouterResp.Error != nil {
+				return "", fmt.Errorf("HTTP %d - API error (%s): %s",
+					resp.StatusCode, openRouterResp.Error.Type, openRouterResp.Error.Message)
+			}
 		}
 		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
+	// Handle Ollama's native response format
+	if provider == ProviderOllama {
+		var ollamaResp OllamaResponse
+		if err := json.Unmarshal(body, &ollamaResp); err != nil {
+			if verbose {
+				log.Printf("[DEBUG] Failed to parse Ollama JSON response: %v", err)
+				log.Printf("[DEBUG] Response body (first 500 chars): %s", string(body[:min(500, len(body))]))
+			}
+			return "", fmt.Errorf("failed to parse Ollama response: %w", err)
+		}
+
+		if ollamaResp.Error != "" {
+			return "", fmt.Errorf("Ollama error: %s", ollamaResp.Error)
+		}
+
+		if verbose {
+			log.Printf("[DEBUG] Successfully received Ollama response")
+		}
+
+		return ollamaResp.Message.Content, nil
+	}
+
+	// Handle OpenAI-compatible response format (OpenRouter, LM Studio)
 	var openRouterResp OpenRouterResponse
 	if err := json.Unmarshal(body, &openRouterResp); err != nil {
 		if verbose {
@@ -243,17 +367,34 @@ func sendRequest(apiKey, input, modelName string, verbose bool) (string, error) 
 	return openRouterResp.Choices[0].Message.Content, nil
 }
 
-// sendStreamingRequest sends a streaming request to the OpenRouter API (SSE)
-func sendStreamingRequest(apiKey, input, modelName string, verbose bool) error {
-	reqBody := OpenRouterRequest{
-		Model: modelName,
-		Messages: []ChatMessage{
-			{
-				Role:    "user",
-				Content: input,
+// sendStreamingRequest sends a streaming request to the LLM API (SSE)
+func sendStreamingRequest(provider Provider, apiKey, input, modelName, ollamaURL, lmStudioURL string, verbose bool) error {
+	apiURL := getAPIURL(provider, ollamaURL, lmStudioURL)
+
+	// Ollama uses a slightly different request format
+	var reqBody interface{}
+	if provider == ProviderOllama {
+		reqBody = map[string]interface{}{
+			"model": modelName,
+			"messages": []ChatMessage{
+				{
+					Role:    "user",
+					Content: input,
+				},
 			},
-		},
-		Stream: true,
+			"stream": true,
+		}
+	} else {
+		reqBody = OpenRouterRequest{
+			Model: modelName,
+			Messages: []ChatMessage{
+				{
+					Role:    "user",
+					Content: input,
+				},
+			},
+			Stream: true,
+		}
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -262,7 +403,7 @@ func sendStreamingRequest(apiKey, input, modelName string, verbose bool) error {
 	}
 
 	if verbose {
-		log.Printf("[DEBUG] Streaming request URL: %s", openRouterURL)
+		log.Printf("[DEBUG] Streaming request URL: %s", apiURL)
 		log.Printf("[DEBUG] Request body size: %d bytes", len(jsonData))
 		log.Printf("[DEBUG] Request model: %s", modelName)
 	}
@@ -270,16 +411,20 @@ func sendStreamingRequest(apiKey, input, modelName string, verbose bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "POST", openRouterURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Referer", "https://github.com/blackopsinc/openrouter-cli")
-	req.Header.Set("X-Title", "OpenRouter CLI")
+
+	// Only set Authorization header for OpenRouter
+	if provider == ProviderOpenRouter && apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("Referer", "https://github.com/blackopsinc/openrouter-cli")
+		req.Header.Set("X-Title", "OpenRouter CLI")
+	}
 
 	if verbose {
 		log.Printf("[DEBUG] Sending streaming HTTP POST request...")
@@ -303,22 +448,85 @@ func sendStreamingRequest(apiKey, input, modelName string, verbose bool) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		var openRouterResp OpenRouterResponse
-		if err := json.Unmarshal(body, &openRouterResp); err == nil && openRouterResp.Error != nil {
-			return fmt.Errorf("HTTP %d - API error (%s): %s",
-				resp.StatusCode, openRouterResp.Error.Type, openRouterResp.Error.Message)
+		if provider == ProviderOllama {
+			var ollamaResp OllamaResponse
+			if err := json.Unmarshal(body, &ollamaResp); err == nil && ollamaResp.Error != "" {
+				return fmt.Errorf("HTTP %d - Ollama error: %s", resp.StatusCode, ollamaResp.Error)
+			}
+		} else {
+			var openRouterResp OpenRouterResponse
+			if err := json.Unmarshal(body, &openRouterResp); err == nil && openRouterResp.Error != nil {
+				return fmt.Errorf("HTTP %d - API error (%s): %s",
+					resp.StatusCode, openRouterResp.Error.Type, openRouterResp.Error.Message)
+			}
 		}
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
-	// Parse SSE stream
+	// Handle Ollama's native streaming format (newline-delimited JSON, not SSE)
+	if provider == ProviderOllama {
+		scanner := bufio.NewScanner(resp.Body)
+		var fullContent strings.Builder
+		chunkCount := 0
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+
+			if verbose {
+				log.Printf("[DEBUG] Ollama stream line: %s", line)
+			}
+
+			var chunk OllamaResponse
+			if err := json.Unmarshal([]byte(line), &chunk); err != nil {
+				if verbose {
+					log.Printf("[DEBUG] Failed to parse Ollama chunk: %v", err)
+					log.Printf("[DEBUG] Chunk data: %s", line)
+				}
+				continue
+			}
+
+			if chunk.Error != "" {
+				return fmt.Errorf("Ollama error in stream: %s", chunk.Error)
+			}
+
+			if chunk.Message.Content != "" {
+				fmt.Print(chunk.Message.Content)
+				fullContent.WriteString(chunk.Message.Content)
+				chunkCount++
+			}
+
+			if chunk.Done {
+				if verbose {
+					log.Printf("[DEBUG] Ollama stream finished")
+				}
+				break
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("failed to read Ollama stream: %w", err)
+		}
+
+		if verbose {
+			log.Printf("[DEBUG] Ollama stream complete. Received %d chunks, total length: %d characters",
+				chunkCount, fullContent.Len())
+		}
+
+		fmt.Println()
+		return nil
+	}
+
+	// Parse SSE stream for OpenAI-compatible providers (OpenRouter, LM Studio)
 	scanner := bufio.NewScanner(resp.Body)
 	var fullContent strings.Builder
 	chunkCount := 0
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		
+
 		if verbose {
 			log.Printf("[DEBUG] SSE line: %s", line)
 		}
@@ -330,7 +538,7 @@ func sendStreamingRequest(apiKey, input, modelName string, verbose bool) error {
 
 		// Extract JSON data
 		data := strings.TrimPrefix(line, "data: ")
-		
+
 		// Check for [DONE] marker
 		if data == "[DONE]" {
 			if verbose {
@@ -359,7 +567,7 @@ func sendStreamingRequest(apiKey, input, modelName string, verbose bool) error {
 		if len(chunk.Choices) > 0 {
 			choice := chunk.Choices[0]
 			var content string
-			
+
 			// Streaming responses use delta, final responses use message
 			if choice.Delta.Content != "" {
 				content = choice.Delta.Content
@@ -388,7 +596,7 @@ func sendStreamingRequest(apiKey, input, modelName string, verbose bool) error {
 	}
 
 	if verbose {
-		log.Printf("[DEBUG] Stream complete. Received %d chunks, total length: %d characters", 
+		log.Printf("[DEBUG] Stream complete. Received %d chunks, total length: %d characters",
 			chunkCount, fullContent.Len())
 	}
 
@@ -405,3 +613,4 @@ func min(a, b int) int {
 	}
 	return b
 }
+
