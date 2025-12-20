@@ -31,7 +31,7 @@ const (
 	// Provider URLs
 	openRouterURL  = "https://openrouter.ai/api/v1/chat/completions"
 	defaultOllamaURL = "http://localhost:11434/api/chat"
-	defaultLMStudioURL = "http://10.8.0.22:1234/v1/chat/completions"
+	defaultLMStudioURL = "http://localhost:1234/v1/chat/completions"
 )
 
 // Provider represents the LLM provider type
