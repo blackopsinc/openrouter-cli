@@ -27,15 +27,91 @@ This CLI tool reads input from stdin and sends it to various LLM providers. It's
 
 ### Building from Source
 
+The project includes a Makefile with cross-platform build support. All binaries are built in the `bin/` directory.
+
+#### Quick Build (Current Platform)
+
 ```bash
 # Navigate to the project directory
 cd openrouter-cli
 
-# Build the project
-go build -o openrouter-cli
+# Build for your current platform
+make build
+
+# Or use go directly
+go build -o bin/openrouter-cli .
+```
+
+#### Cross-Platform Builds
+
+Build for all supported platforms:
+
+```bash
+# Build for all platforms (Linux, macOS, Windows)
+make all
+```
+
+Build for a specific platform:
+
+```bash
+# Linux AMD64
+make linux-amd64
+
+# Linux ARM64
+make linux-arm64
+
+# macOS Intel (AMD64)
+make darwin-amd64
+
+# macOS Apple Silicon (ARM64)
+make darwin-arm64
+
+# Windows 64-bit
+make windows-amd64
+
+# Windows 32-bit
+make windows-386
+```
+
+All binaries will be placed in the `bin/` directory with platform-specific suffixes:
+- Linux: `openrouter-cli-linux-amd64` or `openrouter-cli-linux-arm64`
+- macOS: `openrouter-cli-darwin-amd64` or `openrouter-cli-darwin-arm64`
+- Windows: `openrouter-cli-windows-amd64.exe` or `openrouter-cli-windows-386.exe`
+
+#### Installation
+
+After building, you can install the binary:
+
+```bash
+# Install to system directory (requires sudo)
+make install
+
+# Install to user's local bin directory (no sudo required)
+make install-user
+```
+
+#### Other Make Targets
+
+```bash
+# Clean build artifacts
+make clean
+
+# Format code
+make fmt
+
+# Run tests
+make test
+
+# Run tests with coverage
+make test-coverage
+
+# Show help
+make help
 ```
 
 ## Usage
+
+**Note:** In the examples below, `./openrouter-cli` refers to the binary. If you built it with `make build`, use `bin/openrouter-cli`. If you installed it with `make install` or `make install-user`, you can use `openrouter-cli` directly (assuming it's in your PATH).
 
 ### Basic Usage
 
@@ -43,6 +119,7 @@ The tool reads from stdin. Choose your provider:
 
 #### Using OpenRouter (Cloud)
 
+**Linux/macOS:**
 ```bash
 # Set your API key and provider
 export OPENROUTER_API_KEY="your-api-key-here"
@@ -55,26 +132,74 @@ ps aux | ./openrouter-cli
 cat file.txt | ./openrouter-cli
 ```
 
+**Windows (PowerShell):**
+```powershell
+# Set your API key and provider
+$env:OPENROUTER_API_KEY="your-api-key-here"
+$env:LLM_PROVIDER="openrouter"
+
+# Pipe command output to OpenRouter
+Get-Process | .\openrouter-cli-windows-amd64.exe
+
+# Pipe file content
+Get-Content file.txt | .\openrouter-cli-windows-amd64.exe
+```
+
+**Windows (Command Prompt):**
+```cmd
+REM Set your API key and provider
+set OPENROUTER_API_KEY=your-api-key-here
+set LLM_PROVIDER=openrouter
+
+REM Pipe command output to OpenRouter
+tasklist | openrouter-cli-windows-amd64.exe
+
+REM Pipe file content
+type file.txt | openrouter-cli-windows-amd64.exe
+```
+
 #### Using Ollama (Local)
 
+**Linux/macOS:**
 ```bash
 # Set provider to Ollama (no API key needed)
 export LLM_PROVIDER="ollama"
-export OPENROUTER_MODEL="llama2"  # or any model you have installed
+export LLM_MODEL="llama2"  # or any model you have installed
 
 # Make sure Ollama is running, then pipe command output
 ps aux | ./openrouter-cli
 ```
 
+**Windows (PowerShell):**
+```powershell
+# Set provider to Ollama (no API key needed)
+$env:LLM_PROVIDER="ollama"
+$env:LLM_MODEL="llama2"
+
+# Make sure Ollama is running, then pipe command output
+Get-Process | .\openrouter-cli-windows-amd64.exe
+```
+
 #### Using LM Studio (Local)
 
+**Linux/macOS:**
 ```bash
 # Set provider to LM Studio (no API key needed)
 export LLM_PROVIDER="lmstudio"
-export OPENROUTER_MODEL="local-model"  # or the model name in LM Studio
+export LLM_MODEL="local-model"  # or the model name in LM Studio
 
 # Make sure LM Studio server is running, then pipe command output
 ps aux | ./openrouter-cli
+```
+
+**Windows (PowerShell):**
+```powershell
+# Set provider to LM Studio (no API key needed)
+$env:LLM_PROVIDER="lmstudio"
+$env:LLM_MODEL="local-model"
+
+# Make sure LM Studio server is running, then pipe command output
+Get-Process | .\openrouter-cli-windows-amd64.exe
 ```
 
 ### Environment Variables
@@ -83,7 +208,7 @@ The tool uses the following environment variables:
 
 - **`LLM_PROVIDER`** (optional): Provider to use - `openrouter`, `ollama`, or `lmstudio` (default: `openrouter`)
 - **`OPENROUTER_API_KEY`** (required for OpenRouter): Your OpenRouter API key
-- **`OPENROUTER_MODEL`** (optional): Model to use
+- **`LLM_MODEL`** (optional): Model to use
   - OpenRouter default: `openai/gpt-oss-20b:free`
   - Ollama default: `llama2`
   - LM Studio default: `local-model`
@@ -92,6 +217,31 @@ The tool uses the following environment variables:
 - **`OPENROUTER_VERBOSE`** (optional): Enable verbose/debug logging. Set to `1`, `true`, `yes`, or `on` to enable
 - **`OLLAMA_URL`** (optional): Ollama API URL (default: `http://localhost:11434/api/chat`)
 - **`LM_STUDIO_URL`** (optional): LM Studio API URL (default: `http://localhost:1234/v1/chat/completions`)
+
+#### Setting Environment Variables
+
+**Linux/macOS (Bash/Zsh):**
+```bash
+export OPENROUTER_API_KEY="your-api-key-here"
+export LLM_PROVIDER="openrouter"
+export LLM_MODEL="openai/gpt-4"
+```
+
+**Windows Command Prompt (cmd.exe):**
+```cmd
+set OPENROUTER_API_KEY=your-api-key-here
+set LLM_PROVIDER=openrouter
+set LLM_MODEL=openai/gpt-4
+```
+
+**Windows PowerShell:**
+```powershell
+$env:OPENROUTER_API_KEY="your-api-key-here"
+$env:LLM_PROVIDER="openrouter"
+$env:LLM_MODEL="openai/gpt-4"
+```
+
+**Note:** Environment variables set in Command Prompt or PowerShell are session-specific. To make them persistent, use System Properties → Environment Variables, or set them in your shell profile.
 
 ### Examples
 
@@ -114,17 +264,17 @@ df -h | ./openrouter-cli
 # OpenRouter
 export OPENROUTER_API_KEY="your-api-key"
 export LLM_PROVIDER="openrouter"
-export OPENROUTER_MODEL="openai/gpt-4"
+export LLM_MODEL="openai/gpt-4"
 ps aux | ./openrouter-cli
 
 # Ollama
 export LLM_PROVIDER="ollama"
-export OPENROUTER_MODEL="llama3.2"
+export LLM_MODEL="llama3.2"
 ps aux | ./openrouter-cli
 
 # LM Studio
 export LLM_PROVIDER="lmstudio"
-export OPENROUTER_MODEL="mistral-7b-instruct"
+export LLM_MODEL="mistral-7b-instruct"
 ps aux | ./openrouter-cli
 ```
 
@@ -174,7 +324,7 @@ Verbose mode provides detailed logging including:
 # OpenRouter example
 export LLM_PROVIDER="openrouter"
 export OPENROUTER_API_KEY="your-api-key"
-export OPENROUTER_MODEL="anthropic/claude-3-opus"
+export LLM_MODEL="anthropic/claude-3-opus"
 export OPENROUTER_PRE_PROMPT="Summarize the following:"
 export OPENROUTER_STREAM="true"
 export OPENROUTER_VERBOSE="true"
@@ -182,7 +332,7 @@ cat document.txt | ./openrouter-cli
 
 # Ollama example
 export LLM_PROVIDER="ollama"
-export OPENROUTER_MODEL="llama3.2"
+export LLM_MODEL="llama3.2"
 export OPENROUTER_PRE_PROMPT="Summarize the following:"
 export OPENROUTER_STREAM="true"
 export OPENROUTER_VERBOSE="true"

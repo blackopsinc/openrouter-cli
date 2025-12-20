@@ -17,7 +17,7 @@ import (
 const (
 	envAPIKey    = "OPENROUTER_API_KEY"
 	envProvider  = "LLM_PROVIDER"
-	envModel     = "OPENROUTER_MODEL"
+	envModel     = "LLM_MODEL"
 	envPrePrompt = "OPENROUTER_PRE_PROMPT"
 	envStream    = "OPENROUTER_STREAM"
 	envVerbose   = "OPENROUTER_VERBOSE"
@@ -31,7 +31,7 @@ const (
 	// Provider URLs
 	openRouterURL  = "https://openrouter.ai/api/v1/chat/completions"
 	defaultOllamaURL = "http://localhost:11434/api/chat"
-	defaultLMStudioURL = "http://localhost:1234/v1/chat/completions"
+	defaultLMStudioURL = "http://10.8.0.22:1234/v1/chat/completions"
 )
 
 // Provider represents the LLM provider type
